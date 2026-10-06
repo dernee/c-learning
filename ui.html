@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C语言修仙 · 在线练习</title>
+<link rel="stylesheet" href="css/style.css">
+<!-- 答题特效动画（答对/ 答错）。必须在 style.css 之后引入：
+     里面的 .fx-shaker 等类要覆盖 style.css 的兜底光标规则。 -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/fx_effects.css">
+</head>
+<body class="app-body">
+
+<!-- ============================================================
+     ui.html —— 独立 UI 布局文件
+     本文件存放「全部 DOM 结构」：左侧代码编辑区、右侧可视化动画面板、
+     刷题答题区、修仙等级信息面板。
+     ★ 修改界面布局 / 增删面板，只改这一个文件即可，JS 逻辑不用动。
+     ============================================================ -->
+
+<!-- ========== 顶部导航栏 ========== -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-logo">☯</span>
+    <div class="brand-text">
+      <h1>C语言修仙</h1>
+      <p>在线练习 · 算法可视化</p>
+    </div>
+  </div>
+
+  <!-- 双模式切换 -->
+  <nav class="mode-switch" id="modeSwitch">
+    <button class="mode-btn active" data-mode="quiz">
+      <span class="mode-icon">📝</span><span class="mode-text">刷题模式</span>
+    </button>
+    <button class="mode-btn" data-mode="viz">
+      <span class="mode-icon">📊</span><span class="mode-text">可视化演示</span>
+    </button>
+    <div class="mode-slider"></div>
+  </nav>
+
+  <!-- 常驻修仙境界迷你面板（顶栏） -->
+  <div class="topbar-level" id="topbarLevel">
+    <div class="tbl-badge" id="topbarBadge">炼气期</div>
+    <div class="tbl-info">
+      <div class="tbl-score"><span id="topbarScore">0</span> <em>积分</em></div>
+      <div class="tbl-bar"><div class="tbl-bar-fill" id="topbarBarFill"></div></div>
+      <div class="tbl-next" id="topbarNext">距筑基期还差 100 分</div>
+    </div>
+  </div>
+</header>
+
+<!-- ========== 主体：左右分栏 ========== -->
+<main class="layout">
+
+  <!-- ================= 左栏 ================= -->
+  <section class="col-left">
+
+    <!-- ---------- 面板 1：代码编辑器 ---------- -->
+    <div class="panel panel-editor" id="panelEditor">
+      <div class="panel-head">
+        <h2><span class="dot dot-cyan"></span>代码编辑器</h2>
+        <div class="panel-actions">
+          <select class="sel" id="sampleSelect" title="载入示例代码">
+            <option value="">载入示例…</option>
+            <optgroup label="── 交互程序 ──">
+              <option value="guess">猜数字游戏（scanf）</option>
+              <option value="calc">简易计算器（循环 + switch）</option>
+              <option value="grade">成绩等级判断（if-else）</option>
+            </optgroup>
+            <optgroup label="── 排序可视化 ──">
+              <option value="bubble">冒泡排序</option>
+              <option value="select">选择排序</option>
+              <option value="insert">插入排序</option>
+              <option value="bubbleRev">逆序冒泡（降序）</option>
+            </optgroup>
+          </select>
+          <button class="btn btn-ghost" id="btnFormat" title="整理缩进">格式化</button>
+          <button class="btn btn-ghost" id="btnReset" title="恢复默认代码">重置</button>
+          <button class="btn btn-danger" id="btnClear" title="清空编辑器（需确认）">清空</button>
+        </div>
+      </div>
+
+      <!-- 编辑器主体：行号槽 + 高亮层 + 输入层 三层叠加 -->
+      <div class="editor" id="editor">
+        <div class="editor-gutter" id="editorGutter"></div>
+        <div class="editor-scroll" id="editorScroll">
+          <pre class="editor-highlight" id="editorHighlight" aria-hidden="true"></pre>
+          <textarea class="editor-input" id="editorInput" spellcheck="false"
+                    autocomplete="off" autocapitalize="off" wrap="off"></textarea>
+        </div>
+      </div>
+
+      <div class="editor-foot">
+        <div class="editor-status">
+          <span class="st-item">行 <b id="statLine">1</b>/<b id="statTotal">1</b></span>
+          <span class="st-item">列 <b id="statCol">1</b></span>
+          <span class="st-item">缩进 <b id="statIndent">空格</b></span>
+        </div>
+        <div class="editor-btns">
+          <button class="btn btn-primary" id="btnVisualize">
+            <span class="btn-ico">▶</span>运行可视化
+          </button>
+          <button class="btn btn-ghost" id="btnRunConsole">仅运行</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 面板 2：刷题答题区 ---------- -->
+    <div class="panel panel-quiz" id="panelQuiz">
+      <div class="panel-head">
+        <h2><span class="dot dot-purple"></span>刷题答题区</h2>
+        <div class="panel-actions">
+          <div class="quiz-progress">
+            <span id="quizIndex">1 / 1</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btnPrevQ">上一题</button>
+          <button class="btn btn-ghost btn-sm" id="btnNextQ">下一题</button>
+        </div>
+      </div>
+
+      <!-- 题干区 -->
+      <div class="quiz-bar">
+        <div class="quiz-filters">
+          <select class="qsel" id="selChapter" title="按章节筛选"><option value="">全部章节</option></select>
+          <select class="qsel" id="selType" title="按题型筛选">
+            <option value="">全部题型</option>
+            <option value="choice">选择题</option>
+            <option value="fill">填空题</option>
+            <option value="read">程序阅读</option>
+            <option value="code">编程题</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="btnShuffle" title="随机打乱题库顺序">🔀 随机</button>
+          <button class="btn btn-ghost btn-sm" id="btnResetFilter" title="恢复全部题目">清空筛选</button>
+        </div>
+      </div>
+
+      <div class="quiz-body">
+        <div class="quiz-meta">
+          <span class="chip chip-type" id="qType">选择题</span>
+          <span class="chip chip-diff" id="qDiff">入门</span>
+          <span class="chip chip-point" id="qPoint">+10 分</span>
+          <span class="chip chip-chapter" id="qChapter" hidden></span>
+        </div>
+        <h3 class="quiz-stem" id="qStem">加载题库中…</h3>
+
+        <!-- 选择题选项容器（由 main.js 渲染） -->
+        <div class="quiz-options" id="quizOptions"></div>
+
+        <!-- 代码填空题容器（由 main.js 渲染） -->
+        <div class="quiz-fill" id="quizFill" hidden></div>
+
+        <!-- 代码展示区（代码填空题 / 程序阅读题用） -->
+        <pre class="quiz-code" id="quizCode" hidden></pre>
+
+        <!-- 答题反馈 -->
+        <div class="quiz-feedback" id="quizFeedback" hidden></div>
+      </div>
+
+      <div class="quiz-foot">
+        <button class="btn btn-ghost" id="btnHint">💡 提示</button>
+        <button class="btn btn-primary" id="btnSubmitAnswer">提交答案</button>
+        <button class="btn btn-ghost" id="btnExplain">查看解析</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 右栏 ================= -->
+  <section class="col-right">
+
+    <!-- ---------- 面板 3：算法可视化动画面板 ---------- -->
+    <div class="panel panel-viz" id="panelViz">
+      <div class="panel-head">
+        <h2><span class="dot dot-green"></span>算法可视化动画</h2>
+        <div class="panel-actions">
+          <select class="sel" id="vizSpeedSel" title="播放速度">
+            <option value="600">0.5x</option>
+            <option value="300" selected>1x</option>
+            <option value="150">2x</option>
+            <option value="60">4x</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="btnVizPause" disabled>⏸ 暂停</button>
+          <button class="btn btn-ghost btn-sm" id="btnVizStep" disabled>⏭ 单步</button>
+          <button class="btn btn-danger btn-sm" id="btnVizReset">重置</button>
+        </div>
+      </div>
+
+      <!-- 柱状图舞台：下方是柱子 -->
+      <div class="viz-stage" id="vizStage">
+        <div class="viz-empty" id="vizEmpty">
+          <div class="viz-empty-ico">📊</div>
+          <p>点击「运行可视化」开始演示</p>
+          <small>支持冒泡 / 选择 / 插入排序等数组交换算法</small>
+        </div>
+        <div class="viz-bars" id="vizBars"></div>
+      </div>
+
+      <!-- 实时执行代码浮层：让「动画 ↔ 代码」一一对应 -->
+      <div class="viz-codeline" id="vizCodeline">
+        <div class="vcl-badge">当前执行</div>
+        <code class="vcl-code" id="vizCodelineText">点击「运行可视化」后，这里会实时显示正在执行的那一行代码</code>
+      </div>
+
+      <!-- 统计信息 -->
+      <div class="viz-stats">
+        <div class="stat-card stat-compare">
+          <div class="sc-ico">⇄</div>
+          <div class="sc-body">
+            <div class="sc-label">比较次数</div>
+            <div class="sc-value" id="statCompare">0</div>
+          </div>
+        </div>
+        <div class="stat-card stat-swap">
+          <div class="sc-ico">⇋</div>
+          <div class="sc-body">
+            <div class="sc-label">交换次数</div>
+            <div class="sc-value" id="statSwap">0</div>
+          </div>
+        </div>
+        <div class="stat-card stat-round">
+          <div class="sc-ico">↻</div>
+          <div class="sc-body">
+            <div class="sc-label">循环轮次</div>
+            <div class="sc-value" id="statRound">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 当前变量值 -->
+      <div class="viz-vars">
+        <div class="vv-head">当前变量</div>
+        <div class="vv-list" id="varList">
+          <div class="vv-item vv-idle">等待运行…</div>
+        </div>
+      </div>
+
+      <!-- 事件日志 -->
+      <div class="viz-log">
+        <div class="vl-head">执行日志</div>
+        <div class="vl-body" id="vizLog"></div>
+      </div>
+
+      <!-- 交互式控制台：像 Visual Studio 一样可以敲键盘和程序对话 -->
+      <div class="viz-console" id="vizConsole">
+        <div class="vc-head">
+          <span class="vc-title">
+            <span class="vc-led" id="vcLed"></span>
+            控制台
+            <em class="vc-mode" id="vcMode">交互模式</em>
+          </span>
+          <div class="vc-tools">
+            <button class="btn-mini" id="btnClearConsole" title="清空控制台">清空</button>
+          </div>
+        </div>
+        <div class="vc-body" id="consoleBody">
+          <pre class="vc-out" id="consoleOutput"><span class="vc-dim">（等待运行…）</span></pre>
+          <!-- 等待输入时的提示条 + 输入行，程序没在等输入时整行隐藏 -->
+          <div class="vc-wait" id="vcWait" hidden>
+            <span class="vc-wait-ico">⌨</span>
+            <span class="vc-wait-text" id="vcWaitText">程序需要输入，请在此输入后按回车</span>
+            <button class="btn-mini btn-mini-primary" id="vcSend" title="送入输入（回车）">送入 ⏎</button>
+          </div>
+          <div class="vc-inputline" id="vcInputLine" hidden>
+            <span class="vc-prompt" id="vcPrompt">&gt;</span>
+            <input class="vc-input" id="vcInput" type="text" autocomplete="off"
+                   autocapitalize="off" spellcheck="false" placeholder="输入数据后按回车…">
+            <span class="vc-caret" id="vcCaret"></span>
+          </div>
+        </div>
+        <div class="vc-foot" id="vcFoot">
+          <span class="vc-dim">提示：代码里用 <code>scanf</code> / <code>input</code> / <code>getchar</code> 就能和程序对话</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 面板 4：修仙等级信息面板 ---------- -->
+    <div class="panel panel-level" id="panelLevel">
+      <div class="panel-head">
+        <h2><span class="dot dot-gold"></span>修仙境界</h2>
+        <div class="panel-actions">
+          <button class="btn btn-ghost btn-sm" id="btnLevelRule">等级规则</button>
+          <button class="btn btn-ghost btn-sm" id="btnResetLevel">重置</button>
+        </div>
+      </div>
+
+      <div class="level-hero">
+        <div class="lh-ring" id="levelRing">
+          <div class="lh-ring-text" id="levelName">炼气期</div>
+          <div class="lh-ring-sub" id="levelEn">Qi Refining</div>
+        </div>
+        <div class="lh-meta">
+          <div class="lhm-score">
+            <span class="lhm-num" id="panelScore">0</span>
+            <span class="lhm-unit">总积分</span>
+          </div>
+          <div class="lhm-bar">
+            <div class="lhm-bar-fill" id="levelBarFill"></div>
+            <span class="lhm-bar-text" id="levelBarText">0 / 100</span>
+          </div>
+          <div class="lhm-next" id="levelNext">距离 <b>筑基期</b> 还差 <b>100</b> 分</div>
+        </div>
+      </div>
+
+      <!-- 境界阶梯 -->
+      <div class="level-ladder" id="levelLadder"></div>
+
+      <!-- 统计小卡 -->
+      <div class="level-stats">
+        <div class="ls-card"><div class="ls-num" id="statAnswered">0</div><div class="ls-label">累计答题</div></div>
+        <div class="ls-card"><div class="ls-num" id="statCorrect">0</div><div class="ls-label">答对题数</div></div>
+        <div class="ls-card"><div class="ls-num" id="statAccuracy">0%</div><div class="ls-label">正确率</div></div>
+        <div class="ls-card"><div class="ls-num" id="statStreak">0</div><div class="ls-label">当前连对</div></div>
+      </div>
+
+      <!-- 答题记录 -->
+      <div class="level-records">
+        <div class="lr-head">最近答题记录</div>
+        <div class="lr-list" id="recordList">
+          <div class="lr-empty">暂无记录</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ========== 等级规则弹窗 ========== -->
+<div class="modal" id="ruleModal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>修仙境界 · 积分规则</h3>
+      <button class="btn-mini" data-close>✕</button>
+    </div>
+    <div class="modal-body" id="ruleModalBody"></div>
+    <div class="modal-foot">
+      <p class="modal-tip">规则定义在 <code>js/scoreCalc.js</code> 的 <code>LEVELS</code> 数组中，修改即可调整。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 通用确认弹窗（危险操作防误触） ========== -->
+<div class="modal" id="confirmModal" hidden>
+  <div class="modal-mask" data-cancel></div>
+  <div class="modal-box modal-box-sm" role="alertdialog" aria-modal="true"
+       aria-labelledby="confirmTitle" aria-describedby="confirmDesc">
+    <div class="modal-head">
+      <h3 id="confirmTitle"><span class="warn-ico">⚠</span>确认操作</h3>
+      <button class="btn-mini" data-cancel title="关闭">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-msg" id="confirmDesc">确定要执行此操作吗？</p>
+      <!-- 仅清空代码时显示：告诉用户会丢什么、能怎么找回 -->
+      <div class="confirm-detail" id="confirmDetail" hidden>
+        <div class="cd-row">
+          <span class="cd-k">当前代码</span>
+          <span class="cd-v" id="confirmStat">—</span>
+        </div>
+        <p class="cd-hint">清空后可用「载入示例…」或「重置」找回默认代码。</p>
+      </div>
+    </div>
+    <div class="modal-foot confirm-foot">
+      <button class="btn btn-ghost" data-cancel id="confirmCancel">取消</button>
+      <button class="btn btn-danger" id="confirmOk">确认清空</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 通用提示浮层 ========== -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ========== 脚本：按依赖顺序加载 ========== -->
+<!-- questionBank.js → cCompiler.js → scoreCalc.js → main.js -->
+<script src="js/questionBank.js"></script>
+<script src="js/questionBank1000.js"></script>
+<script src="js/cCompiler.js"></script>
+<script src="js/scoreCalc.js"></script>
+<script src="js/main.js"></script>
+<!-- 答题特效控制器。★ 必须在 main.js 之后：它要读window.__cPractice
+     才能挂上判题钩子。 -->
+<script src="js/fx.js"></script>
+
+<!-- ========== 答题特效（答对 / 答错） ==========
+     ★ 设计要点：特效不做成页面上的固定元素，而是「寄生」在右上角
+       判分弹窗（toast）里 —— 弹窗出现时带着特效一起出现，
+       弹窗自己淡出时特效跟着一起消失。页面上因此永远不会有
+       一个残留的特效图片或徽章。
+     ★ 用法：fx.js 用这个隐藏模板 cloneNode(true)，塞进新 toast 的
+       左侧，toast 本身消失时特效节点随它一起被移除，
+       不需要额外清理，也不会留残影。
+     ★模板整体 display:none（见 css/fx_effects.css 的 .fx-template），
+       只作素材源，不参与布局、不可见、也不拦截点击。
+     ★ 内部元素一律用 margin 居中，不占用 transform 通道，
+       避免与动画关键帧里的 scale/rotate 互相覆盖。
+     ============================================== -->
+<div class="fx-template" id="fxTemplate" aria-hidden="true">
+  <!-- 小爆炸框：rage-comic 背板，只比头像大一圈 -->
+  <div class="fx-burst fx-burst-ok"></div>
+  <div class="fx-burst fx-burst-bad"></div>
+  <!-- 粒子从头像边缘迸出 -->
+  <div class="fx-sparks">
+    <i class="fx-spark"></i><i class="fx-spark"></i><i class="fx-spark"></i>
+    <i class="fx-spark"></i><i class="fx-spark"></i><i class="fx-spark"></i>
+    <i class="fx-spark"></i><i class="fx-spark"></i>
+  </div>
+  <div class="fx-shaker">
+    <div class="fx-char"></div>
+    <!-- 对勾：绿底 + 白勾，勾形用 stroke-dashoffset 描边生长 -->
+    <div class="fx-mark fx-mark-ok">
+      <svg viewBox="0 0 100 100">
+        <circle class="fx-halo" cx="50" cy="50" r="34"/>
+        <path class="fx-tick" d="M32 51 L44 64 L69 36"/>
+      </svg>
+    </div>
+    <!-- 叉号：两笔依次画出 -->
+    <div class="fx-mark fx-mark-bad">
+      <svg viewBox="0 0 100 100">
+        <path class="fx-bar fx-b1" d="M32 32 L68 68"/>
+        <path class="fx-bar fx-b2" d="M68 32 L32 68"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C语言修仙 · 在线练习与算法可视化</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* 外层页面（iframe 的宿主）也要挂剑光标。
+   * ui.html 内部由 style.css 末尾的规则覆盖，但 iframe 元素本身
+   * 占据整个视口，鼠标停在它的边框/加载态上时走的是外层文档规则。 */
+  html, html body, html body * { cursor: var(--cursor-sword); }
+</style>
+</head>
+<body class="entry-body">
+
+<!--
+  ============================================================
+  index.html —— 网站入口
+  职责：仅负责挂载 ui.html（全部 DOM 布局都在 ui.html 中）
+  好处：修改界面只需改 ui.html，本文件永远不用动
+  运行方式：
+    1) 本地：直接双击打开 index.html 即可（纯前端、无后端、无构建）
+    2) 部署：把整个 c-practice 目录推到 GitHub Pages 即可
+  ============================================================
+-->
+
+<div class="entry-loading" id="entryLoading">
+  <div class="entry-spinner"></div>
+  <p>正在载入 <code>ui.html</code> …</p>
+</div>
+
+<div class="entry-fallback" id="entryFallback" hidden>
+  <h1>😢 界面文件未能载入</h1>
+  <p class="entry-reason"></p>
+  <p>请确认 <code>ui.html</code> 与本文件位于<b>同一目录</b>，且 <code>css\</code>、<code>js\</code> 两个子文件夹也已完整复制。</p>
+  <p class="entry-actions">
+    <a href="ui.html">点此直接打开 ui.html →</a>
+  </p>
+  <p class="entry-tip">提示：若直接双击 index.html 出现异常，可在本文件夹打开终端执行
+    <code>python -m http.server 8080</code>，然后访问 http://localhost:8080</p>
+</div>
+
+<!-- ui.html 承载全部界面结构，被 iframe 嵌入以保持单文件职责单一 -->
+<iframe id="appFrame" src="ui.html" title="C语言修仙在线练习"></iframe>
+
+<script>
+  /* 入口页脚本：仅负责 iframe 载入状态提示，不含任何业务逻辑
+   *
+   * 注意：iframe 的 error 事件在部分浏览器 + file:// 协议下并不触发，
+   * 只监听 error 会导致真正出问题时用户只看到白屏。
+   * 因此这里采用「load 事件 + 定时探测 iframe 内部 DOM」双重保险：
+   * 只要 ui.html 真正渲染出了 #appFrame 容器，就认为载入成功。
+   */
+  (function () {
+    var frame = document.getElementById('appFrame');
+    var loading = document.getElementById('entryLoading');
+    var fallback = document.getElementById('entryFallback');
+    var settled = false;
+
+    function succeed() {
+      if (settled) return;
+      settled = true;
+      loading.style.display = 'none';
+      fallback.hidden = true;
+    }
+
+    function fail(msg) {
+      if (settled) return;
+      settled = true;
+      loading.style.display = 'none';
+      fallback.hidden = false;
+      if (msg) {
+        var p = fallback.querySelector('.entry-reason');
+        if (p) p.textContent = msg;
+      }
+    }
+
+    // 方式一：iframe 触发 load
+    frame.addEventListener('load', function () { succeed(); });
+
+    // 方式二：iframe 触发 error（部分浏览器可用）
+    frame.addEventListener('error', function () {
+      fail('浏览器报告 ui.html 载入失败。');
+    });
+
+    // 方式三：定时探测 iframe 内部是否已渲染出根容器
+    // 跨域限制对 file:// 同目录不生效，此处可正常读取（同源）。
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      var ok = false;
+      try {
+        var doc = frame.contentDocument;
+        ok = !!(doc && doc.getElementById('appFrame'));
+      } catch (e) {
+        // 某些浏览器禁止读取 contentDocument，忽略并等待 load 事件
+        ok = true;
+      }
+      if (ok) { clearInterval(timer); succeed(); return; }
+      if (tries >= 20) {                    // 20 × 300ms = 6 秒
+        clearInterval(timer);
+        fail('ui.html 已找到，但内部脚本未能正常初始化。请按 F12 查看控制台报错。');
+      }
+    }, 300);
+  })();
+</script>
+
+</body>
+</html>

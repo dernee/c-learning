@@ -1,0 +1,287 @@
+/* ================================================================
+   10. 答题特效（答对 / 答错）
+   ------------------------------------------------------------
+   形态：寄生在右上角判分弹窗（toast）里的一枚小徽章。
+
+   ★ 为什么寄生在弹窗上，而不做成页面上的独立元素
+   ------------------------------------------------
+   试过两版独立形态，都被否掉了：
+     v1 全屏居中：挡住题目/代码区，答完题看不见自己选了什么
+     v2 挂在「答题反馈」条右上角：虽然不挡内容，但页面上长期存在
+         一个特效图位，观感上像是"网站里嵌了一张图"
+   现在把徽章直接放进 main.js 自己弹的 toast 里：
+     - 判分弹窗出现在右上角 → 徽章跟着出现
+     - 弹窗自己淡出 → 徽章作为它的子节点一起被移除
+   于是页面上永远不会残留任何特效元素，天然满足"用完即走"。
+
+   ★ 为什么要"寄生"而不是自己再弹一个
+   ------------------------------------
+   main.js 判分时本来就会 toast('答对啦！', ...) / toast('答错了', ...)，
+   自己再弹一个会出现两个弹窗。所以改为：找到新出现的 toast，
+   把徽章塞进它的左侧。这样既复用了原有弹窗的样式与生命周期，
+   又完全不改动 main.js。
+
+   ★ 命名约定：所有类名统一 fx- 前缀，与网站既有样式零冲突。
+   ★ 动画全部由关键帧驱动，JS 只负责克隆节点与增删类。
+   ================================================================ */
+
+/* ---------- fx 模板（隐藏，只作克隆素材源）---------------------- */
+/*
+ * display:none 让它彻底退出布局与渲染：不占位、不可见、
+ * 也不会被 tab 聚焦。fx.js 只从它 cloneNode(true)。
+ */
+.fx-template { display: none; }
+
+/* ---------- fx 徽章：toast 内的装饰 ------------------------------ */
+/*
+ * 挂在 toast 里而不是页面上，所以用 absolute 相对 toast 定位，
+ * 靠 padding 让位把徽章"塞进"弹窗左侧，文字自动往右让。
+ * 弹窗消失时本节点随弹窗一起被 remove，无需任何清理。
+ */
+.toast.fx-host { padding-left: 62px; }
+
+.fx-badge {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  /* margin 居中而非 transform：transform 通道留给动画的 scale/rotate，
+     一旦被居中占用，动画会整体静止（且不报错）。 */
+  margin-top: -22px;
+  pointer-events: none;
+}
+
+/* 震动层：头像 + 对勾/叉号的共同父级。
+   ★ 这层必须有显式尺寸。fx-char 用的是 height:100%，
+     父级若height:auto，百分比高度会退化成 0，头像被压成一条线
+     （表现是"弹窗里有个看不见的图标"，且无任何报错）。 */
+.fx-shaker {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* 头像 */
+.fx-char {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: url("../assets/fx-face.png") center / contain no-repeat;
+}
+
+/* 爆炸框背板：比头像大一圈，作为 rage-comic 风格的底托 */
+.fx-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 72px;
+  height: 72px;
+  margin-left: -36px;
+  margin-top: -36px;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.fx-burst-ok  { background-image: url("../assets/fx-burst-ok.svg"); }
+.fx-burst-bad { background-image: url("../assets/fx-burst-bad.svg"); }
+
+/* 粒子层：同样以徽章中心为原点 */
+.fx-sparks {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.fx-spark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* ---------- fx 入场：跟着弹窗一起长出来 -------------------------- */
+/*
+ * 时长压到 0.9s：弹窗自己的 tIn 动画是 0.3s，特效稍长一点形成
+ * "内容比外壳后到位"的层次，但不能拖到让人觉得卡。
+ * 终态是 opacity:1 —— 特效要留在弹窗里陪它一起消失，
+ * 不是播完就淡出（那是上一版被否掉的行为）。
+ */
+.fx-badge.fx-ok,
+.fx-badge.fx-bad { animation: fxBadgeIn 0.9s cubic-bezier(0.2, 1.35, 0.4, 1) both; }
+
+@keyframes fxBadgeIn {
+  0%   { opacity: 0; transform: scale(0.25) rotate(-18deg); }
+  22%  { opacity: 1; transform: scale(1.18) rotate(5deg); }
+  38%  { transform: scale(0.94) rotate(-2deg); }
+  52%  { transform: scale(1.04) rotate(1deg); }
+  66%  { transform: scale(1) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* ---------- fx 爆炸框 ------------------------------------------- */
+/*
+ * ★ 这里用的是**后代**选择器，不是同元素复合类。
+ *   fx-ok / fx-bad 挂在 .fx-badge 上（徽章本身），爆炸框是它的子节点，
+ *   所以必须写 `.fx-badge.fx-ok .fx-burst-ok.go`。
+ *   写成 `.fx-burst-ok.fx-ok.go` 会永远匹配不到——那个元素上没有 fx-ok。
+ */
+.fx-badge.fx-ok  .fx-burst-ok.go  { animation: fxBurstPop 0.7s cubic-bezier(0.2, 1.4, 0.35, 1) both; }
+.fx-badge.fx-bad .fx-burst-bad.go { animation: fxBurstPopBad 0.7s cubic-bezier(0.2, 1.4, 0.35, 1) both; }
+
+@keyframes fxBurstPop {
+  0%   { opacity: 0; transform: scale(0.35) rotate(-30deg); }
+  26%  { opacity: 0.95; transform: scale(1.12) rotate(6deg); }
+  44%  { transform: scale(0.96) rotate(-3deg); }
+  60%  { transform: scale(1) rotate(0deg); }
+  100% { opacity: 0.75; transform: scale(1.04) rotate(0deg); }
+}
+
+@keyframes fxBurstPopBad {
+  0%   { opacity: 0; transform: scale(1.6) rotate(0deg); }
+  22%  { opacity: 0.95; transform: scale(0.9) rotate(-5deg); }
+  40%  { transform: scale(1.06) rotate(4deg); }
+  56%  { transform: scale(0.98) rotate(-2deg); }
+  100% { opacity: 0.75; transform: scale(1.02) rotate(0deg); }
+}
+
+/* ---------- fx 对勾 / 叉号 --------------------------------------- */
+/*
+ * 压在嘴部。素材圆化后嘴中心约在 (0.50, 0.46)。
+ * 尺寸给到 40%：徽章只有 44px，按比例缩到 13px 会完全看不清勾形。
+ */
+.fx-mark {
+  position: absolute;
+  z-index: 2;
+  width: 40%;
+  height: 40%;
+  left: 40%;
+  top: 44%;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  margin-left: -20%;
+  margin-top: -20%;
+}
+.fx-mark svg { width: 100%; height: 100%; overflow: visible; }
+
+.fx-mark-ok .fx-halo {
+  fill: rgba(53, 208, 127, 0.95);
+  stroke: #0a6b3c;
+  stroke-width: 6;
+}
+.fx-mark-ok .fx-tick {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 38;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.35));
+}
+.fx-mark-ok .fx-tick.go { animation: fxDrawTick 0.34s 0.2s ease-out both; }
+/* ★ 同上，kind 类在 .fx-badge 上，这里必须用后代选择器，
+   写成 .fx-mark-ok.go（复合类）永远匹配不到。 */
+.fx-badge.fx-ok  .fx-mark-ok.go  { animation: fxMarkIn 0.4s 0.18s cubic-bezier(0.18, 1.5, 0.4, 1) both; }
+
+@keyframes fxDrawTick {
+  0%   { stroke-dasharray: 200; stroke-dashoffset: 200; }
+  100% { stroke-dasharray: 200; stroke-dashoffset: 0; }
+}
+@keyframes fxMarkIn {
+  0%   { opacity: 0; transform: scale(0.2) rotate(-40deg); }
+  60%  { opacity: 1; transform: scale(1.25) rotate(6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+.fx-mark-bad .fx-bar {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 32;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px #f5342b) drop-shadow(0 3px 0 #7d0a15);
+}
+.fx-mark-bad .fx-b1.go { animation: fxBarIn 0.22s 0.14s cubic-bezier(0.6, 0, 0.4, 1) both; }
+.fx-mark-bad .fx-b2.go { animation: fxBarIn 0.22s 0.26s cubic-bezier(0.6, 0, 0.4, 1) both; }
+.fx-badge.fx-bad .fx-mark-bad.go { animation: fxMarkInBad 0.36s 0.14s cubic-bezier(0.18, 1.5, 0.4, 1) both; }
+
+@keyframes fxBarIn {
+  0%   { stroke-dasharray: 200; stroke-dashoffset: 200; }
+  100% { stroke-dasharray: 200; stroke-dashoffset: 0; }
+}
+@keyframes fxMarkInBad {
+  0%   { opacity: 0; transform: scale(2.1) rotate(-18deg); }
+  55%  { opacity: 1; transform: scale(0.92) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* ---------- fx 粒子 --------------------------------------------- */
+/*
+ * 数量少、飞散距离短：徽章只有 44px，飞远了会糊住弹窗文字。
+ * 具体角度与距离由 fx.js 克隆时写在元素的 --fxdx / --fxdy 上。
+ */
+.fx-badge.fx-ok .fx-spark {
+  background: #ffc93c;
+  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+  animation: fxSparkGo 0.62s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes fxSparkGo {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0) rotate(0deg); }
+  24%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(40deg); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--fxdx)), calc(-50% + var(--fxdy))) scale(0.25) rotate(var(--fxrot)); }
+}
+
+.fx-badge.fx-bad .fx-spark {
+  background: #f5342b;
+  border-radius: 1px;
+  animation: fxSparkBad 0.55s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+@keyframes fxSparkBad {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0) rotate(0deg); }
+  20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(30deg); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--fxdx)), calc(-50% + var(--fxdy))) scale(0.3) rotate(var(--fxrot)); }
+}
+
+/* ---------- fx 答错轻震 + 红闪 ------------------------------------ */
+/*
+ * 只作用在 .fx-badge 上，幅度很小（±2px）——徽章在弹窗里，
+ * 震大了会连带动感文字。
+ * ★ 红闪用类切换而非 animation：同一元素不能挂两个 animation 简写，
+ *   后声明者会把前者整个挤掉（表现为红闪正常但徽章不动，且无报错）。
+ */
+.fx-badge.fx-bad.fx-redflash {
+  filter: saturate(1.9) contrast(1.16) brightness(1.2)
+          drop-shadow(0 0 6px #ff2a1a);
+}
+
+/* ---------- 境界突破闪光（补全原有缺失的关键帧）----------------- */
+/*
+ * main.js 的 LevelUI.celebrate() 一直在引用 lvFlash，但 style.css 里
+ * 从未定义过这个关键帧，导致升级时的金色闪烁实际是「无动画直接消失」。
+ * 这里补上，与特效互不干扰（150 > 90，且各自独立元素）。
+ */
+@keyframes lvFlash {
+  0%   { opacity: 0; }
+  18%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---------- 减动效偏好 ------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-spark { animation: none !important; }
+  /* 保留徽章与对勾本身的出现，否则判分提示会少掉关键信息。
+     注意：kind 类与 fx-badge 是**同一个元素**上的两个类，
+     所以必须写 `.fx-badge.fx-ok` 而不是 `.fx-ok .fx-badge`
+     （后者是后代选择器，永远匹配不到）。 */
+  .fx-badge.fx-ok,
+  .fx-badge.fx-bad { animation: fxBadgeIn 0.2s both !important; }
+  .fx-spark.fx-ok,
+  .fx-spark.fx-bad { animation-duration: 0.01s !important; }
+}
